@@ -1,0 +1,90 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// 商品
+model Product {
+  id        String   @id @default(cuid())
+  sku       String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  batches   Batch[]
+  orders    Order[]
+}
+
+// 到货批次。receiptId 是到货回执幂等键：重复回执不会重复增加库存。
+// allocatedQty 表示"已消耗"数量（待取货 + 已取货），
+// 可分配数量 = receivedQty - allocatedQty，通过条件更新保证并发不超卖。
+model Batch {
+  id           String       @id @default(cuid())
+  productId    String
+  product      Product      @relation(fields: [productId], references: [id])
+  batchNo      String       @unique
+  receiptId    String       @unique
+  receivedQty  Int
+  allocatedQty Int          @default(0)
+  status       String       @default("ACTIVE") // ACTIVE | QC_PAUSED（质检暂停）
+  createdAt    DateTime     @default(now())
+  allocations  Allocation[]
+  skips        BatchSkip[]
+}
+
+// 预订订单（模拟支付成功后创建）。状态：QUEUED 排队中 | ALLOCATED 已分配 |
+// FULFILLED 已取货 | CANCELLED 已取消（逾期未取 / 拒收）
+model Order {
+  id          String       @id @default(cuid())
+  orderNo     String       @unique
+  productId   String
+  product     Product      @relation(fields: [productId], references: [id])
+  customer    String
+  paidAt      DateTime
+  status      String       @default("QUEUED")
+  cancelReason String?
+  createdAt   DateTime     @default(now())
+  allocations Allocation[]
+  skips       BatchSkip[]
+
+  @@index([productId, status, paidAt, orderNo])
+}
+
+// 分配记录。状态：PENDING_PICKUP 待取货 | PICKED_UP 已取货 |
+// EXPIRED 逾期未取 | REJECTED 拒收 | GIVEN_UP 客户放弃本批次
+model Allocation {
+  id        String    @id @default(cuid())
+  batchId   String
+  batch     Batch     @relation(fields: [batchId], references: [id])
+  orderId   String
+  order     Order     @relation(fields: [orderId], references: [id])
+  status    String    @default("PENDING_PICKUP")
+  deadline  DateTime
+  createdAt DateTime  @default(now())
+  closedAt  DateTime?
+
+  @@index([status, deadline])
+}
+
+// 客户"放弃本批次"记录：该订单不再参与此批次分配，但保留后续批次排队资格
+model BatchSkip {
+  id        String   @id @default(cuid())
+  batchId   String
+  batch     Batch    @relation(fields: [batchId], references: [id])
+  orderId   String
+  order     Order    @relation(fields: [orderId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([batchId, orderId])
+}
+
+// 模拟通知（本地写库 + 控制台输出，不接真实短信/邮件）
+model Notification {
+  id        String   @id @default(cuid())
+  orderId   String?
+  type      String
+  payload   String
+  createdAt DateTime @default(now())
+}

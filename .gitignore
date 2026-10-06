@@ -13,3 +13,7 @@ build/
 轨迹/
 录屏/
 视频/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
