@@ -1,0 +1,22 @@
+{
+  "name": "preorder-allocation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "电商商品预订到货批次分配系统（NestJS + React + Prisma/SQLite）",
+  "workspaces": [
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "db:setup": "npm -w server run db:setup",
+    "seed": "npm -w server run seed",
+    "dev:server": "npm -w server run dev",
+    "dev:web": "npm -w web run dev",
+    "dev": "concurrently -k -n server,web -c blue,green \"npm run dev:server\" \"npm run dev:web\"",
+    "start": "npm run db:setup && npm run dev",
+    "test:engine": "npm -w server run test:engine"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}

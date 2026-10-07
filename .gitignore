@@ -8,6 +8,8 @@ target/
 dist/
 build/
 *.log
+*.db
+*.db-journal
 .claude/
 .cc-workbench/
 轨迹/

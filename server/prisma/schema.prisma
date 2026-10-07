@@ -1,0 +1,96 @@
+// 预订到货批次分配系统 —— SQLite 数据模型
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Product {
+  id          String   @id @default(cuid())
+  sku         String   @unique
+  name        String
+  createdAt   DateTime @default(now())
+
+  orders  Order[]
+  batches Batch[]
+}
+
+/// 预订订单（支付成功后进入排队）
+model Order {
+  id          String    @id @default(cuid())
+  orderNo     String    @unique
+  productId   String
+  customer    String
+  phone       String
+  /// 付款成功时间 —— 排队第一排序键
+  paidAt      DateTime
+  /// 是否仍有排队资格（取消预订 / 最终完成后置 false）
+  inQueue     Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  product     Product   @relation(fields: [productId], references: [id])
+  allocations Allocation[]
+  notifications Notification[]
+
+  @@index([productId, inQueue, paidAt, orderNo])
+}
+
+model Batch {
+  id          String   @id @default(cuid())
+  productId   String
+  /// 批次号，如 B20261006-01
+  batchNo     String
+  /// 实收到货数量（重复回执不会再次增加）
+  receivedQty Int
+  /// 已分配数量（含待取货）；归还时减少
+  allocatedQty Int     @default(0)
+  /// 质检暂停：暂停期间不参与分配
+  paused      Boolean  @default(false)
+  /// 到货回执幂等键（回执单号）
+  receiptNo   String   @unique
+  arrivedAt   DateTime @default(now())
+
+  product     Product  @relation(fields: [productId], references: [id])
+  allocations Allocation[]
+
+  @@unique([productId, batchNo])
+}
+
+/// 一次分货记录（记录队列位次，便于审计“按顺序分货”）
+model Allocation {
+  id           String    @id @default(cuid())
+  orderId      String
+  batchId      String
+  /// 分货时该订单在产品队列中的顺位（从 1 开始）
+  queuePosition Int
+  /// 第几次分到货（同一订单可多次：放弃/逾期后继续排队）
+  attempt      Int
+  status       String    @default("ASSIGNED") // ASSIGNED | PICKED_UP | EXPIRED | REJECTED | WAIVED
+  pickupDueAt  DateTime
+  assignedAt   DateTime  @default(now())
+  settledAt    DateTime?
+  /// 归还库存时用于排除“刚放弃/逾期的批次”，避免立刻又分回同一批
+  releasedFromBatch Boolean @default(false)
+
+  order        Order     @relation(fields: [orderId], references: [id])
+  batch        Batch     @relation(fields: [batchId], references: [id])
+
+  @@index([orderId])
+  @@index([batchId])
+  @@index([status, pickupDueAt])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  orderId   String
+  type      String   // ASSIGNED | PICKED_UP | EXPIRED | REJECTED | WAIVED
+  content   String
+  createdAt DateTime @default(now())
+
+  order     Order    @relation(fields: [orderId], references: [id])
+
+  @@index([orderId, createdAt])
+}
